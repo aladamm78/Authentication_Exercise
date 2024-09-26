@@ -1,0 +1,22 @@
+
+{% extends "base.html" %}
+
+{% block title %}New Feedback{% endblock %}
+
+{% block content %}
+  <h2>Create Feedback</h2>
+  <form method="POST" action="{{ url_for('main.new_feedback', username=user.username) }}">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+      {{ form.title.label }}<br>
+      {{ form.title(size=32, class="form-control") }}
+    </div>
+    <div class="form-group">
+      {{ form.content.label }}<br>
+      {{ form.content(class="form-control", rows=5) }}
+    </div>
+    <div class="form-group">
+      {{ form.submit(class="btn btn-primary") }}
+    </div>
+  </form>
+{% endblock %}

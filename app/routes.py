@@ -1,8 +1,8 @@
-from flask import Blueprint, render_template, redirect, url_for, flash
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
 from app import db, bcrypt
-from app.forms import RegistrationForm, LoginForm
-from app.models import User
+from app.forms import RegistrationForm, LoginForm, FeedbackForm
+from app.models import User, Feedback
 
 # Create a blueprint instance
 main = Blueprint('main', __name__)
@@ -17,6 +17,7 @@ def index():
 def about():
     return render_template('about.html')
 
+# User registration route
 @main.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegistrationForm()
@@ -50,7 +51,7 @@ def register():
 
     return render_template('register.html', form=form)
 
-
+# User login route
 @main.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm()
@@ -63,9 +64,10 @@ def login():
             return redirect(url_for('main.user_profile', username=user.username))
         else:
             flash('Login Unsuccessful. Please check username and password', 'danger')
-    
+
     return render_template('login.html', form=form)
 
+# Logout route
 @main.route('/logout')
 @login_required
 def logout():
@@ -73,6 +75,7 @@ def logout():
     flash('You have been logged out.', 'success')
     return redirect(url_for('main.index'))  # Redirect to home instead of login page
 
+# User profile route: Shows user's profile and feedback
 @main.route('/users/<username>')
 @login_required
 def user_profile(username):
@@ -84,9 +87,95 @@ def user_profile(username):
         flash('You are not authorized to view this page.', 'danger')
         return redirect(url_for('main.index'))
 
-    # Pass the user object to the template to display user info (except password)
-    return render_template('user_profile.html', user=user)
+    # Get all feedback from this user
+    feedbacks = Feedback.query.filter_by(user_id=user.id).all()
 
+    return render_template('user_profile.html', user=user, feedbacks=feedbacks)
+
+# Add new feedback route
+@main.route('/users/<username>/feedback/add', methods=['GET', 'POST'])
+@login_required
+def new_feedback(username):
+    user = User.query.filter_by(username=username).first_or_404()
+
+    # Ensure only the logged-in user can add feedback to their own profile
+    if current_user.username != user.username:
+        flash('You are not authorized to add feedback for this user.', 'danger')
+        return redirect(url_for('main.index'))
+
+    form = FeedbackForm()
+    if form.validate_on_submit():
+        feedback = Feedback(title=form.title.data, content=form.content.data, user_id=user.id)
+        db.session.add(feedback)
+        db.session.commit()
+        flash('Feedback added successfully!', 'success')
+        return redirect(url_for('main.user_profile', username=user.username))
+
+    return render_template('create_feedback.html', form=form, user=user)
+
+@main.route('/feedback/<int:feedback_id>/update', methods=['GET', 'POST'])
+@login_required
+def edit_feedback(feedback_id):
+    feedback = Feedback.query.get_or_404(feedback_id)
+
+    if feedback.user_id != current_user.id:
+        flash('You are not authorized to edit this feedback.', 'danger')
+        return redirect(url_for('main.index'))
+
+    form = FeedbackForm()
+    if form.validate_on_submit():
+        feedback.title = form.title.data
+        feedback.content = form.content.data
+        db.session.commit()
+        flash('Feedback updated successfully!', 'success')
+        return redirect(url_for('main.user_profile', username=current_user.username))
+
+    # Pre-fill the form with the current feedback details
+    elif request.method == 'GET':
+        form.title.data = feedback.title
+        form.content.data = feedback.content
+
+    return render_template('edit_feedback.html', form=form, feedback=feedback)
+
+
+# Delete feedback route
+@main.route('/feedback/<int:feedback_id>/delete', methods=['POST'])
+@login_required
+def delete_feedback(feedback_id):
+    feedback = Feedback.query.get_or_404(feedback_id)
+
+    # Ensure that only the user who wrote the feedback can delete it
+    if feedback.user_id != current_user.id:
+        flash('You are not authorized to delete this feedback.', 'danger')
+        return redirect(url_for('main.index'))
+
+    db.session.delete(feedback)
+    db.session.commit()
+    flash('Feedback deleted successfully!', 'success')
+    return redirect(url_for('main.user_profile', username=current_user.username))
+
+# Delete user route
+@main.route('/users/<username>/delete', methods=['POST'])
+@login_required
+def delete_user(username):
+    user = User.query.filter_by(username=username).first_or_404()
+
+    # Only allow the logged-in user to delete their account
+    if current_user.username != user.username:
+        flash('You are not authorized to delete this account.', 'danger')
+        return redirect(url_for('main.index'))
+
+    # Delete all feedback associated with the user
+    Feedback.query.filter_by(user_id=user.id).delete()
+
+    # Delete the user
+    db.session.delete(user)
+    db.session.commit()
+
+    # Log the user out and redirect to the homepage
+    logout_user()
+    flash('Your account and all associated feedback have been deleted.', 'success')
+    return redirect(url_for('main.index'))
 
 
 
