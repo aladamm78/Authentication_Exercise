@@ -17,8 +17,6 @@ def index():
 def about():
     return render_template('about.html')
 
-# GET: Show registration form
-# POST: Process registration form
 @main.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegistrationForm()
@@ -46,15 +44,13 @@ def register():
         # Automatically log the user in after successful registration
         login_user(new_user)
 
-        print(f"User {new_user.username} registered and logged in. Redirecting to /secret")
-
         flash('Your account has been created! You are now logged in.', 'success')
-        return redirect(url_for('main.secret'))
+        # Redirect to the user's profile page
+        return redirect(url_for('main.user_profile', username=new_user.username))
 
     return render_template('register.html', form=form)
 
-# GET: Show login form
-# POST: Process login form
+
 @main.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm()
@@ -62,29 +58,36 @@ def login():
         user = User.query.filter_by(username=form.username.data).first()
         if user and bcrypt.check_password_hash(user.password, form.password.data):
             login_user(user)
-            print(f"User {user.username} logged in. Redirecting to /secret")
-
             flash('You have been logged in!', 'success')
-
-            # Redirect to the secret page after successful login
-            return redirect(url_for('main.secret'))
+            # Redirect to the user's profile page
+            return redirect(url_for('main.user_profile', username=user.username))
         else:
             flash('Login Unsuccessful. Please check username and password', 'danger')
     
     return render_template('login.html', form=form)
 
-# Logout route
 @main.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash('You have been logged out.', 'success')
-    return redirect(url_for('main.login'))
+    return redirect(url_for('main.index'))  # Redirect to home instead of login page
 
-# Secret page: Only accessible to logged-in users
-@main.route('/secret')
+@main.route('/users/<username>')
 @login_required
-def secret():
-    return "You made it!"
+def user_profile(username):
+    # Get the user by username from the database
+    user = User.query.filter_by(username=username).first_or_404()
+
+    # Ensure that the logged-in user can only view their own profile
+    if current_user.username != user.username:
+        flash('You are not authorized to view this page.', 'danger')
+        return redirect(url_for('main.index'))
+
+    # Pass the user object to the template to display user info (except password)
+    return render_template('user_profile.html', user=user)
+
+
+
 
 
